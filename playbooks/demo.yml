@@ -1,0 +1,18 @@
+---
+- hosts: localhost
+  gather_facts: false
+  tasks:
+    - ansible.builtin.debug:
+        msg: "The lint demo is running."
+
+    - ansible.builtin.debug:
+        msg: "Bananas are yellow."
+
+    - ansible.builtin.debug:
+        msg: "This task does not change anything."
+
+    - ansible.builtin.debug:
+        msg: "GitHub Actions will lint this file."
+
+    - ansible.builtin.debug:
+        msg: "This playbook is intentionally noncompliant."
