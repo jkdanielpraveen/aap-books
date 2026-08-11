@@ -2,6 +2,12 @@
 - hosts: localhost
   gather_facts: false
   tasks:
+    - name: Download without validating the TLS certificate
+      ansible.builtin.get_url:
+        url: https://example.com/insecure.txt
+        dest: /tmp/insecure.txt
+        validate_certs: false
+
     - ansible.builtin.debug:
         msg: "The lint demo is running."
 
