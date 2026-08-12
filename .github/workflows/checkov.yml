@@ -2,7 +2,12 @@ name: Checkov
 
 on:
   push:
+    branches:
+      - main
+
   pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -24,7 +29,6 @@ jobs:
       - name: Install Checkov
         run: pip install checkov==3.3.10
 
-      # PR run: capture output so it can be posted first
       - name: Run Checkov on PR
         id: checkov_pr
         if: github.event_name == 'pull_request'
@@ -54,7 +58,6 @@ jobs:
         if: github.event_name == 'pull_request' && steps.checkov_pr.outcome == 'failure'
         run: exit 1
 
-      # Normal push run
-      - name: Run Checkov on push
+      - name: Run Checkov on main push
         if: github.event_name == 'push'
         run: checkov -d . --framework ansible

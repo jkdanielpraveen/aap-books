@@ -1,8 +1,14 @@
 name: PR Agent Review
 
 on:
-  push:
   pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - reopened
+      - synchronize
+      - ready_for_review
 
 permissions:
   contents: read
@@ -11,9 +17,6 @@ permissions:
 
 jobs:
   pr-agent:
-    # PR-Agent needs an actual PR to review.
-    if: github.event_name == 'pull_request'
-
     runs-on: ubuntu-latest
 
     steps:
@@ -26,11 +29,13 @@ jobs:
           OPENAI.KEY: ${{ secrets.OPENCODE_GO_API_KEY }}
           OPENAI.API_BASE: https://opencode.ai/zen/go/v1
 
-          # DeepSeek V4 Pro
+          # Model
           CONFIG.MODEL: openai/deepseek-v4-pro
           CONFIG.CUSTOM_MODEL_MAX_TOKENS: "131072"
 
-          # Automatically review PRs
+          # Review only
           GITHUB_ACTION_CONFIG.AUTO_REVIEW: "true"
           GITHUB_ACTION_CONFIG.AUTO_DESCRIBE: "false"
           GITHUB_ACTION_CONFIG.AUTO_IMPROVE: "false"
+
+          GITHUB_ACTION_CONFIG.PR_ACTIONS: '["opened", "reopened", "synchronize", "ready_for_review"]'
