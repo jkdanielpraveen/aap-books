@@ -4,13 +4,57 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+  pull-requests: write
+
 jobs:
   scan-ansible:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
         with:
           python-version: "3.x"
-      - run: pip install checkov==3.3.10
-      - run: checkov -d . --framework ansible
+
+      - name: Install Checkov
+        run: pip install checkov==3.3.10
+
+      # PR run: capture output so it can be posted first
+      - name: Run Checkov on PR
+        id: checkov_pr
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          checkov -d . --framework ansible --output cli > checkov-output.txt 2>&1
+
+      - name: Post Checkov results to PR
+        if: github.event_name == 'pull_request' && steps.checkov_pr.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo "## Checkov Security Scan"
+            echo
+            echo "Checkov found policy violations in this pull request:"
+            echo
+            echo '```text'
+            cat checkov-output.txt
+            echo '```'
+          } > checkov-comment.md
+
+          gh pr comment "$PR_NUMBER" --body-file checkov-comment.md
+
+      - name: Fail PR check if Checkov found issues
+        if: github.event_name == 'pull_request' && steps.checkov_pr.outcome == 'failure'
+        run: exit 1
+
+      # Normal push run
+      - name: Run Checkov on push
+        if: github.event_name == 'push'
+        run: checkov -d . --framework ansible
