@@ -2,7 +2,12 @@ name: Ansible Lint
 
 on:
   push:
+    branches:
+      - main
+
   pull_request:
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -24,7 +29,6 @@ jobs:
       - name: Install ansible-lint
         run: pip install ansible-lint
 
-      # PR run: capture output so we can post it before failing the job
       - name: Run ansible-lint on PR
         id: ansible_lint_pr
         if: github.event_name == 'pull_request'
@@ -54,7 +58,6 @@ jobs:
         if: github.event_name == 'pull_request' && steps.ansible_lint_pr.outcome == 'failure'
         run: exit 1
 
-      # Normal push run
-      - name: Run ansible-lint on push
+      - name: Run ansible-lint on main push
         if: github.event_name == 'push'
         run: ansible-lint .
