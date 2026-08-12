@@ -29,6 +29,7 @@ jobs:
 
           # Model
           CONFIG.MODEL: openai/deepseek-v4-pro
+          CONFIG.CUSTOM_MODEL_MAX_TOKENS: "131072"
 
           # Only run the review tool for now
           GITHUB_ACTION_CONFIG.AUTO_REVIEW: "true"
