@@ -1,0 +1,23 @@
+[pr_reviewer]
+num_max_findings = 50
+
+extra_instructions = """
+Perform a thorough review of all changed code.
+
+Identify every distinct, concrete issue you can confidently establish from the PR,
+up to the configured maximum number of findings.
+
+Do not stop after finding the first serious issue.
+
+Prioritize:
+- correctness bugs
+- security vulnerabilities
+- regressions
+- unsafe configuration
+- broken assumptions
+- idempotency problems
+- reliability issues
+- privilege or access-control problems
+
+Avoid stylistic nitpicks and speculative concerns.
+"""
