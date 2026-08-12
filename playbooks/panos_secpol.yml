@@ -1,0 +1,30 @@
+---
+- name: Create a security policy on Palo Alto Firewall
+  hosts: localhost
+  gather_facts: no
+  collections:
+    - paloaltonetworks.panos
+
+  tasks:
+    - name: Create security policy rule
+      paloaltonetworks.panos.panos_security_rule:
+        provider:
+          ip_address: "192.168.29.55"
+          username: "admin"
+          password: "P@ssw0rd"
+        rule_name: "AllowSSH"
+        source_zone: "any"
+        destination_zone: "any"
+        source_ip: "any"
+        destination_ip: "any"
+        application: "ssh"
+        service: "application-default"
+        action: "allow"
+        log_end: true
+        commit: true
+      register: create_rule_result
+
+    - name: Show result of rule creation
+      debug:
+        var: create_rule_result
+  connection: local
