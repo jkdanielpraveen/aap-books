@@ -1,16 +1,60 @@
-name: Ansible lint demo
+name: Ansible Lint
 
 on:
   push:
-    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  pull-requests: write
 
 jobs:
   lint:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
         with:
           python-version: "3.x"
-      - run: pip install ansible-lint
-      - run: ansible-lint .
+
+      - name: Install ansible-lint
+        run: pip install ansible-lint
+
+      # PR run: capture output so we can post it before failing the job
+      - name: Run ansible-lint on PR
+        id: ansible_lint_pr
+        if: github.event_name == 'pull_request'
+        continue-on-error: true
+        run: |
+          ansible-lint . > ansible-lint-output.txt 2>&1
+
+      - name: Post ansible-lint results to PR
+        if: github.event_name == 'pull_request' && steps.ansible_lint_pr.outcome == 'failure'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          {
+            echo "## Ansible Lint"
+            echo
+            echo "Ansible Lint found issues in this pull request:"
+            echo
+            echo '```text'
+            cat ansible-lint-output.txt
+            echo '```'
+          } > ansible-lint-comment.md
+
+          gh pr comment "$PR_NUMBER" --body-file ansible-lint-comment.md
+
+      - name: Fail PR check if ansible-lint found issues
+        if: github.event_name == 'pull_request' && steps.ansible_lint_pr.outcome == 'failure'
+        run: exit 1
+
+      # Normal push run
+      - name: Run ansible-lint on push
+        if: github.event_name == 'push'
+        run: ansible-lint .
