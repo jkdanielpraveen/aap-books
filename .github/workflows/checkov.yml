@@ -12,6 +12,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 jobs:
   scan-ansible:
@@ -29,35 +30,80 @@ jobs:
       - name: Install Checkov
         run: pip install checkov==3.3.10
 
+      # -------------------------
+      # Pull request scan
+      # -------------------------
       - name: Run Checkov on PR
         id: checkov_pr
         if: github.event_name == 'pull_request'
         continue-on-error: true
         run: |
-          checkov -d . --framework ansible --output cli > checkov-output.txt 2>&1
+          checkov \
+            -d . \
+            --framework ansible \
+            --output cli \
+            > checkov-output.txt 2>&1
 
-      - name: Post Checkov results to PR
-        if: github.event_name == 'pull_request' && steps.checkov_pr.outcome == 'failure'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+      - name: Build Checkov PR comment
+        if: github.event_name == 'pull_request'
         run: |
           {
-            echo "## Checkov Security Scan"
+            echo '<!-- checkov-report -->'
             echo
-            echo "Checkov found policy violations in this pull request:"
+            echo '## Checkov Security Scan'
             echo
-            echo '```text'
-            cat checkov-output.txt
-            echo '```'
+            echo "**Review updated for commit \`${{ github.event.pull_request.head.sha }}\`**"
+            echo
+
+            if [ "${{ steps.checkov_pr.outcome }}" = "failure" ]; then
+              echo 'Checkov found policy violations in this pull request:'
+              echo
+              echo '```text'
+              cat checkov-output.txt
+              echo '```'
+            else
+              echo '✅ Checkov found no policy violations.'
+            fi
           } > checkov-comment.md
 
-          gh pr comment "$PR_NUMBER" --body-file checkov-comment.md
+      - name: Create or update Checkov PR comment
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          COMMENT_ID="$(
+            gh api \
+              "repos/$GH_REPO/issues/$PR_NUMBER/comments" \
+              --paginate \
+              --jq '.[] | select(.user.login == "github-actions[bot]") | select(.body | contains("<!-- checkov-report -->")) | .id' \
+              | head -n 1
+          )"
+
+          if [ -n "$COMMENT_ID" ]; then
+            echo "Updating existing Checkov comment: $COMMENT_ID"
+
+            gh api \
+              --method PATCH \
+              "repos/$GH_REPO/issues/comments/$COMMENT_ID" \
+              --raw-field body="$(cat checkov-comment.md)"
+          else
+            echo "Creating new Checkov comment"
+
+            gh api \
+              --method POST \
+              "repos/$GH_REPO/issues/$PR_NUMBER/comments" \
+              --raw-field body="$(cat checkov-comment.md)"
+          fi
 
       - name: Fail PR check if Checkov found issues
         if: github.event_name == 'pull_request' && steps.checkov_pr.outcome == 'failure'
         run: exit 1
 
+      # -------------------------
+      # Main branch push scan
+      # -------------------------
       - name: Run Checkov on main push
         if: github.event_name == 'push'
         run: checkov -d . --framework ansible

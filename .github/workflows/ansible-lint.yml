@@ -12,6 +12,7 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 jobs:
   lint:
@@ -29,6 +30,9 @@ jobs:
       - name: Install ansible-lint
         run: pip install ansible-lint
 
+      # -------------------------
+      # Pull request scan
+      # -------------------------
       - name: Run ansible-lint on PR
         id: ansible_lint_pr
         if: github.event_name == 'pull_request'
@@ -36,28 +40,66 @@ jobs:
         run: |
           ansible-lint . > ansible-lint-output.txt 2>&1
 
-      - name: Post ansible-lint results to PR
-        if: github.event_name == 'pull_request' && steps.ansible_lint_pr.outcome == 'failure'
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
+      - name: Build Ansible Lint PR comment
+        if: github.event_name == 'pull_request'
         run: |
           {
-            echo "## Ansible Lint"
+            echo '<!-- ansible-lint-report -->'
             echo
-            echo "Ansible Lint found issues in this pull request:"
+            echo '## Ansible Lint'
             echo
-            echo '```text'
-            cat ansible-lint-output.txt
-            echo '```'
+            echo "**Review updated for commit \`${{ github.event.pull_request.head.sha }}\`**"
+            echo
+
+            if [ "${{ steps.ansible_lint_pr.outcome }}" = "failure" ]; then
+              echo 'Ansible Lint found issues in this pull request:'
+              echo
+              echo '```text'
+              cat ansible-lint-output.txt
+              echo '```'
+            else
+              echo '✅ Ansible Lint found no issues.'
+            fi
           } > ansible-lint-comment.md
 
-          gh pr comment "$PR_NUMBER" --body-file ansible-lint-comment.md
+      - name: Create or update Ansible Lint PR comment
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          COMMENT_ID="$(
+            gh api \
+              "repos/$GH_REPO/issues/$PR_NUMBER/comments" \
+              --paginate \
+              --jq '.[] | select(.user.login == "github-actions[bot]") | select(.body | contains("<!-- ansible-lint-report -->")) | .id' \
+              | head -n 1
+          )"
+
+          if [ -n "$COMMENT_ID" ]; then
+            echo "Updating existing Ansible Lint comment: $COMMENT_ID"
+
+            gh api \
+              --method PATCH \
+              "repos/$GH_REPO/issues/comments/$COMMENT_ID" \
+              --raw-field body="$(cat ansible-lint-comment.md)"
+          else
+            echo "Creating new Ansible Lint comment"
+
+            gh api \
+              --method POST \
+              "repos/$GH_REPO/issues/$PR_NUMBER/comments" \
+              --raw-field body="$(cat ansible-lint-comment.md)"
+          fi
 
       - name: Fail PR check if ansible-lint found issues
         if: github.event_name == 'pull_request' && steps.ansible_lint_pr.outcome == 'failure'
         run: exit 1
 
+      # -------------------------
+      # Main branch push scan
+      # -------------------------
       - name: Run ansible-lint on main push
         if: github.event_name == 'push'
         run: ansible-lint .
