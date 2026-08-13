@@ -117,3 +117,23 @@
         delay: 30
         timeout: 600
         state: started
+
+    - command: echo "unnamed task"
+      ignore_errors: true
+
+    - name: Run shell instead of command
+      shell: echo "hello"
+      become: yes
+
+    - name: Create folder with command
+      command: mkdir /tmp/bad_dir
+
+    - name: Ensure packages are latest
+      package:
+        name: git
+        state: latest
+
+    - name: Debug message with bad jinja
+      debug:
+        msg: "path is {{target_version}}"
+      when: True
