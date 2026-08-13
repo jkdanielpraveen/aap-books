@@ -31,10 +31,11 @@ jobs:
 
           # Model
           # CONFIG.MODEL: openai/deepseek-v4-pro
+          CONFIG.MODEL: openai/deepseek-v4-flash
           # CONFIG.MODEL: openai/gpt-5.6-luna
           # CONFIG.MODEL: openai/glm-5.2
           # CONFIG.MODEL: openai/grok-4.5
-          CONFIG.MODEL: openai/qwen3.7-plus
+          # CONFIG.MODEL: openai/qwen3.7-plus
           # CONFIG.MODEL: openai/kimi-k3
           CONFIG.CUSTOM_MODEL_MAX_TOKENS: "131072"
 
