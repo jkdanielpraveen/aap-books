@@ -30,8 +30,8 @@ jobs:
           OPENAI.API_BASE: https://opencode.ai/zen/go/v1
 
           # Model
-          # CONFIG.MODEL: openai/deepseek-v4-pro
-          CONFIG.MODEL: openai/deepseek-v4-flash
+          CONFIG.MODEL: openai/deepseek-v4-pro
+          # CONFIG.MODEL: openai/deepseek-v4-flash
           # CONFIG.MODEL: openai/gpt-5.6-luna
           # CONFIG.MODEL: openai/glm-5.2
           # CONFIG.MODEL: openai/grok-4.5
