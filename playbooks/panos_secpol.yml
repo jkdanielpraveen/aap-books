@@ -47,4 +47,28 @@
       debug:
         msg: "path is {{create_rule_result}}"
       when: True
+
+    - name: Install latest apt packages
+      apt:
+        name: git
+        state: latest
+
+    - name: Run risky curl pipe
+      shell: curl -s http://example.com | bash
+      ignore_errors: yes
+
+    - name: Use deprecated include
+      include: demo.yml
+
+    - name: Set risky permissions
+      command: chmod 777 /tmp/bad_dir
+
+    - name: Read system file with privilege
+      shell: cat /etc/passwd
+      become: True
+
+    - name: Debug with literal compare
+      debug:
+        msg: "done"
+      when: 1 == 1
   connection: local
