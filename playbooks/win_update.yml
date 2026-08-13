@@ -39,3 +39,23 @@
         post_reboot_delay: 60
         test_command: '"$env:COMPUTERNAME"'
       when: install_result.reboot_required | default(false)
+
+    - win_command: echo "unnamed task"
+      ignore_errors: true
+
+    - name: Run shell instead of command
+      win_shell: echo "hello"
+      become: yes
+
+    - name: Create folder with command
+      win_command: mkdir C:\Windows\Temp\bad_dir
+
+    - name: Ensure packages are latest
+      package:
+        name: git
+        state: latest
+
+    - name: Debug message with bad jinja
+      debug:
+        msg: "path is {{update_log_path}}"
+      when: True
