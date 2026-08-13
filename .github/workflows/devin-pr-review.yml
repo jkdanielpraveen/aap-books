@@ -1,0 +1,241 @@
+name: Devin PR Review
+
+on:
+    pull_request:
+        branches:
+            - main
+        types:
+            - opened
+            - reopened
+            - synchronize
+            - ready_for_review
+
+permissions:
+    contents: read
+    pull-requests: write
+    issues: write
+
+jobs:
+    devin-review:
+        if: github.event.pull_request.draft == false
+        runs-on: ubuntu-latest
+
+        steps:
+            - name: Checkout PR
+              uses: actions/checkout@v4
+              with:
+                  fetch-depth: 0
+
+            - name: Build PR diff
+              id: diff
+              shell: bash
+              run: |
+                  git fetch origin "${{ github.event.pull_request.base.ref }}"
+
+                  git diff \
+                    "origin/${{ github.event.pull_request.base.ref }}...HEAD" \
+                    > /tmp/pr.diff
+
+                  echo "Diff size:"
+                  wc -c /tmp/pr.diff
+
+            - name: Create Devin review session
+              id: devin
+              shell: bash
+              env:
+                  DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
+                  DEVIN_ORG_ID: ${{ secrets.DEVIN_ORG_ID }}
+                  PR_TITLE: ${{ github.event.pull_request.title }}
+                  PR_BODY: ${{ github.event.pull_request.body }}
+                  PR_NUMBER: ${{ github.event.pull_request.number }}
+                  REPOSITORY: ${{ github.repository }}
+              run: |
+                  python3 <<'PY'
+                  import json
+                  import os
+                  import urllib.request
+
+                  with open("/tmp/pr.diff", "r", encoding="utf-8") as f:
+                      diff = f.read()
+
+                  prompt = f"""
+                  You are reviewing pull request #{os.environ['PR_NUMBER']}
+                  in repository {os.environ['REPOSITORY']}.
+
+                  PR title:
+                  {os.environ['PR_TITLE']}
+
+                  PR description:
+                  {os.environ.get('PR_BODY', '')}
+
+                  Review ONLY the changes shown below.
+
+                  Focus on:
+                  - correctness and bugs
+                  - security issues
+                  - regressions
+                  - maintainability
+                  - error handling
+                  - unnecessary complexity
+                  - configuration mistakes
+                  - Ansible best practices where applicable
+
+                  Ignore purely stylistic issues unless they materially affect
+                  readability or maintainability.
+
+                  Return a concise Markdown review with:
+
+                  ## Summary
+
+                  ## Findings
+
+                  For every finding include:
+                  - severity: Critical, High, Medium, or Low
+                  - affected file
+                  - explanation
+                  - recommended fix
+
+                  If there are no meaningful findings, explicitly say so.
+
+                  PR DIFF:
+
+                  {diff}
+                  """
+
+                  payload = json.dumps({
+                      "prompt": prompt,
+                      "title": f"PR #{os.environ['PR_NUMBER']} Review"
+                  }).encode()
+
+                  request = urllib.request.Request(
+                      f"https://api.devin.ai/v3/organizations/{os.environ['DEVIN_ORG_ID']}/sessions",
+                      data=payload,
+                      headers={
+                          "Authorization": f"Bearer {os.environ['DEVIN_API_KEY']}",
+                          "Content-Type": "application/json",
+                      },
+                      method="POST",
+                  )
+
+                  with urllib.request.urlopen(request) as response:
+                      result = json.load(response)
+
+                  session_id = result["session_id"]
+
+                  print(f"Created Devin session: {session_id}")
+
+                  with open(os.environ["GITHUB_OUTPUT"], "a") as output:
+                      output.write(f"session_id={session_id}\n")
+                  PY
+
+            - name: Wait for Devin
+              shell: bash
+              env:
+                  DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
+                  DEVIN_ORG_ID: ${{ secrets.DEVIN_ORG_ID }}
+                  SESSION_ID: ${{ steps.devin.outputs.session_id }}
+              run: |
+                  python3 <<'PY'
+                  import json
+                  import os
+                  import time
+                  import urllib.request
+
+                  base = (
+                      f"https://api.devin.ai/v3/organizations/"
+                      f"{os.environ['DEVIN_ORG_ID']}/sessions/"
+                      f"{os.environ['SESSION_ID']}"
+                  )
+
+                  headers = {
+                      "Authorization": f"Bearer {os.environ['DEVIN_API_KEY']}"
+                  }
+
+                  for attempt in range(60):
+                      request = urllib.request.Request(base, headers=headers)
+
+                      with urllib.request.urlopen(request) as response:
+                          session = json.load(response)
+
+                      status = session.get("status")
+                      detail = session.get("status_detail")
+
+                      print(
+                          f"Attempt {attempt + 1}: "
+                          f"status={status}, detail={detail}"
+                      )
+
+                      if detail == "waiting_for_user":
+                          break
+
+                      if status in {"finished", "completed", "failed", "error"}:
+                          break
+
+                      time.sleep(10)
+                  else:
+                      raise RuntimeError("Timed out waiting for Devin")
+                  PY
+
+            - name: Read Devin review
+              shell: bash
+              env:
+                  DEVIN_API_KEY: ${{ secrets.DEVIN_API_KEY }}
+                  DEVIN_ORG_ID: ${{ secrets.DEVIN_ORG_ID }}
+                  SESSION_ID: ${{ steps.devin.outputs.session_id }}
+              run: |
+                  python3 <<'PY'
+                  import json
+                  import os
+                  import urllib.request
+
+                  url = (
+                      f"https://api.devin.ai/v3/organizations/"
+                      f"{os.environ['DEVIN_ORG_ID']}/sessions/"
+                      f"{os.environ['SESSION_ID']}/messages"
+                  )
+
+                  request = urllib.request.Request(
+                      url,
+                      headers={
+                          "Authorization": f"Bearer {os.environ['DEVIN_API_KEY']}"
+                      },
+                  )
+
+                  with urllib.request.urlopen(request) as response:
+                      result = json.load(response)
+
+                  messages = [
+                      item["message"]
+                      for item in result["items"]
+                      if item.get("source") == "devin"
+                  ]
+
+                  if not messages:
+                      raise RuntimeError("Devin returned no review message")
+
+                  review = messages[-1]
+
+                  with open("/tmp/devin-review.md", "w", encoding="utf-8") as f:
+                      f.write(review)
+                  PY
+
+            - name: Post review to PR
+              uses: actions/github-script@v7
+              with:
+                  github-token: ${{ github.token }}
+                  script: |
+                      const fs = require("fs");
+
+                      const review = fs.readFileSync(
+                        "/tmp/devin-review.md",
+                        "utf8"
+                      );
+
+                      await github.rest.issues.createComment({
+                        owner: context.repo.owner,
+                        repo: context.repo.repo,
+                        issue_number: context.issue.number,
+                        body:
+                          "## Devin PR Review\n\n" +
+                          review
+                      });
