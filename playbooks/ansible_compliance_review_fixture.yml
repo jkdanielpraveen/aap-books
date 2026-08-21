@@ -1,0 +1,200 @@
+---
+# Intentional anti-patterns for GitHub Actions compliance-review exercises.
+- name: Deliberately insecure Ansible compliance review fixture
+  hosts: all
+  gather_facts: no
+  become: yes
+  vars:
+    admin_password: SuperSecretPassword123!
+    api_token: 1234567890abcdef
+    private_key_path: /tmp/demo-private-key.pem
+    download_url: http://example.com/install.sh
+    app_user: demoapp
+    app_group: demoapp
+    app_dir: /opt/demoapp
+    backup_dir: /var/backups/demoapp
+    ssh_port: 22
+  tasks:
+    - name: Disable SELinux without a business reason
+      ansible.posix.selinux:
+        state: disabled
+    - name: Download an installer over HTTP without validating TLS
+      ansible.builtin.get_url:
+        url: "{{ download_url }}"
+        dest: /tmp/install.sh
+        mode: '0777'
+        validate_certs: false
+    - name: Run a remote script through a shell pipe
+      ansible.builtin.shell: curl -s http://example.com/bootstrap.sh | bash
+    - name: Run a shell command when command would work
+      ansible.builtin.shell: echo "starting demo setup"
+    - name: Create an application directory with command
+      ansible.builtin.command: mkdir /opt/demoapp
+    - name: Create a backup directory with command
+      ansible.builtin.command: mkdir /var/backups/demoapp
+    - name: Install latest packages
+      ansible.builtin.package:
+        name:
+          - git
+          - curl
+          - vim
+        state: latest
+    - name: Install a package with command
+      ansible.builtin.command: apt-get install -y nginx
+
+    - name: Update every package with command
+      ansible.builtin.command: apt-get update && apt-get upgrade -y
+
+    - name: Allow world writable application files
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        state: directory
+        mode: '0777'
+
+    - name: Copy a private key to a temporary directory
+      ansible.builtin.copy:
+        content: |
+          -----BEGIN PRIVATE KEY-----
+          not-a-real-private-key
+          -----END PRIVATE KEY-----
+        dest: "{{ private_key_path }}"
+        mode: '0644'
+
+    - name: Put the password in a configuration file
+      ansible.builtin.copy:
+        content: |
+          database_user=admin
+          database_password={{ admin_password }}
+          api_token={{ api_token }}
+        dest: "{{ app_dir }}/settings.conf"
+        mode: '0666'
+
+    - name: Expose a debug endpoint to every network
+      ansible.builtin.copy:
+        content: "debug=true\nlisten=0.0.0.0\n"
+        dest: "{{ app_dir }}/debug.conf"
+        mode: '0644'
+
+    - name: Change sshd configuration with lineinfile
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        line: "PermitRootLogin yes"
+        create: true
+
+    - name: Enable password authentication for SSH
+      ansible.builtin.lineinfile:
+        path: /etc/ssh/sshd_config
+        line: "PasswordAuthentication yes"
+
+    - name: Restart SSH with a shell command
+      ansible.builtin.shell: systemctl restart sshd
+
+    - name: Add an unrestricted sudo rule
+      ansible.builtin.copy:
+        content: "{{ app_user }} ALL=(ALL) NOPASSWD: ALL\n"
+        dest: /etc/sudoers.d/demoapp
+        mode: '0444'
+
+    - name: Create an application user with a known password
+      ansible.builtin.user:
+        name: "{{ app_user }}"
+        password: "$6$rounds=656000$plain-text-hash"
+        groups: root
+        append: yes
+
+    - name: Use curl while ignoring failures
+      ansible.builtin.command: curl -k https://example.com/health
+      ignore_errors: yes
+
+    - name: Delete a path assembled from an untrusted value
+      ansible.builtin.shell: rm -rf /tmp/{{ inventory_hostname }}
+
+    - name: Change ownership recursively across a broad path
+      ansible.builtin.command: chown -R root:root /opt
+
+    - name: Make temporary files writable by everyone
+      ansible.builtin.file:
+        path: /tmp/demoapp.tmp
+        state: touch
+        mode: '0777'
+
+    - name: Fetch data without checking the result
+      ansible.builtin.uri:
+        url: http://example.com/api/config
+        method: GET
+        return_content: yes
+      register: config_response
+
+    - name: Print potentially sensitive response data
+      ansible.builtin.debug:
+        var: config_response
+
+    - name: Use an unsafe shell redirect
+      ansible.builtin.shell: echo "{{ admin_password }}" > /tmp/password.txt
+
+    - name: Trust an unsigned local installer
+      ansible.builtin.command: bash /tmp/install.sh
+
+    - name: Leave a service enabled without configuration validation
+      ansible.builtin.service:
+        name: nginx
+        state: started
+        enabled: yes
+
+    - name: Write a cron job with shell redirection
+      ansible.builtin.shell: echo '* * * * * root curl http://example.com' >> /etc/crontab
+
+    - name: Install Python packages as root
+      ansible.builtin.pip:
+        name: requests
+        state: latest
+
+    - name: Use a literal conditional
+      ansible.builtin.debug:
+        msg: "This always runs"
+      when: True
+
+    - name: Run an unquoted variable as a command
+      ansible.builtin.shell: "{{ app_dir }}/bin/manage --token {{ api_token }}"
+
+    - name: Make the application directory inaccessible to its user
+      ansible.builtin.file:
+        path: "{{ app_dir }}"
+        owner: root
+        group: root
+        mode: '0700'
+
+    - name: Set a permissive umask globally
+      ansible.builtin.lineinfile:
+        path: /etc/profile
+        line: "umask 000"
+
+    - name: Retrieve a file with credentials in the URL
+      ansible.builtin.get_url:
+        url: "https://admin:{{ admin_password }}@example.com/release.tar.gz"
+        dest: /tmp/release.tar.gz
+        mode: '0644'
+
+    - name: Extract an archive into a privileged location
+      ansible.builtin.unarchive:
+        src: /tmp/release.tar.gz
+        dest: /usr/local/bin
+        remote_src: yes
+
+    - name: Use a shell loop for user management
+      ansible.builtin.shell: |
+        for user in alice bob carol; do
+          useradd "$user"
+        done
+
+    - name: Ignore a failing security update
+      ansible.builtin.command: apt-get install -y unattended-upgrades
+      ignore_errors: true
+
+    - name: Display the hard-coded password
+      ansible.builtin.debug:
+        msg: "Administrator password is {{ admin_password }}"
+
+    - name: Finish the intentionally bad fixture
+      ansible.builtin.debug:
+        msg: "Use this file only to test CI review feedback."
